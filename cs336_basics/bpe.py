@@ -10,11 +10,12 @@ def train_bpe(
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     
     # init vocab, mergelist
-    vocab = {}
     merge_list = []
-    initial_list = special_tokens + [chr(i) for i in range(256)]
-    for idx, token in enumerate(initial_list):
-        vocab[idx] = bytes(token, ENCODE)
+    vocab = {i: bytes([i]) for i in range(256)}
+    for token in special_tokens:
+        token_bytes = token.encode(encoding=ENCODE)
+        if token_bytes not in vocab.values():
+            vocab[len(vocab)] = token_bytes
 
     with open(input_path) as f:
         raw_text = f.read()
@@ -28,7 +29,7 @@ def train_bpe(
         token_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""        
         for splitted_text in splitted_texts:
             for match in re.finditer(token_pattern, splitted_text):
-                token_key = tuple([bytes(c, ENCODE) for c in match.group()])
+                token_key = tuple([bytes([c]) for c in match.group(0).encode(ENCODE)])
                 token_dict[token_key] = token_dict.get(token_key, 0) + 1
 
         # merge pairs, update merge list, vocab

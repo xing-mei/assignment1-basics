@@ -9,7 +9,6 @@ import numpy.typing as npt
 import torch
 from torch import Tensor
 
-import cs336_basics
 import cs336_basics.bpe
 
 def run_linear(
