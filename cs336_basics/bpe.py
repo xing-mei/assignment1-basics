@@ -9,14 +9,15 @@ def train_bpe(
     special_tokens: list[str],
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     
+    # init vocab, mergelist
+    vocab = {}
+    merge_list = []
+    initial_list = special_tokens + [chr(i) for i in range(256)]
+    for idx, token in enumerate(initial_list):
+        vocab[idx] = bytes(token, ENCODE)
+
     with open(input_path) as f:
         raw_text = f.read()
-
-        # init vocab, invert_vocab
-        vocab = {} # dict[int, bytes]
-        initial_list = special_tokens + [chr(i) for i in range(256)]
-        for idx, token in enumerate(initial_list):
-            vocab[idx] = bytes(token, ENCODE)
 
         # split text with special tokens
         split_pattern = "|".join([re.escape(st) for st in special_tokens])
@@ -30,20 +31,21 @@ def train_bpe(
                 token_key = tuple([bytes(c, ENCODE) for c in match.group()])
                 token_dict[token_key] = token_dict.get(token_key, 0) + 1
 
-        # merge pairs, update merge list, vocab, vocab_invert
-        merge_list = []
+        # merge pairs, update merge list, vocab
         while(len(vocab) < vocab_size):
             # find pairs with max counts
             pair_count = {}
             for token, count in token_dict.items():
                 for pair in zip(token, token[1:]):
                     pair_count[pair] = pair_count.get(pair, 0) + count
-            pair_with_max_counts = max(pair_count, key=pair_count.get)
-            # update merge list, vocab, vocab_invert
+            pair_with_max_counts = max(pair_count, key=lambda x: (pair_count.get(x), x))
+            
+            # update merge list, vocab 
             merged_id = len(vocab)
             merged_bytes = pair_with_max_counts[0] + pair_with_max_counts[1]
             merge_list.append(pair_with_max_counts)
             vocab[merged_id] = merged_bytes
+            
             # update token dict
             new_token_dict = {}
             for token, count in token_dict.items():
@@ -62,9 +64,5 @@ def train_bpe(
                     new_token = tuple(new_token)
                     new_token_dict[new_token] = count
             token_dict = new_token_dict
-        return (vocab, merge_list)
-
-    raise FileNotFoundError(f"The file '{input_path}' was not found.")
     
-if __name__ == "__main__":
-    train_bpe("data/temp.txt", 259, ["<|endoftext|>"])
+    return (vocab, merge_list)
