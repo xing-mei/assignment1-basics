@@ -36,9 +36,14 @@ def train_bpe(
         while(len(vocab) < vocab_size):
             # find pairs with max counts
             pair_count = {}
+            pair_token_mapping = {}
             for token, count in token_dict.items():
                 for pair in zip(token, token[1:]):
                     pair_count[pair] = pair_count.get(pair, 0) + count
+                    if pair in pair_token_mapping:
+                        pair_token_mapping[pair].add(token)
+                    else:
+                        pair_token_mapping[pair] = {token}
             pair_with_max_counts = max(pair_count, key=lambda x: (pair_count.get(x), x))
             
             # update merge list, vocab 
@@ -48,22 +53,20 @@ def train_bpe(
             vocab[merged_id] = merged_bytes
             
             # update token dict
-            new_token_dict = {}
-            for token, count in token_dict.items():
-                if len(token) < 2:
-                    new_token_dict[token] = count
-                else:
-                    new_token = []
-                    i = 0
-                    while i < len(token):
-                        if i < len(token) -1 and (token[i], token[i + 1]) == pair_with_max_counts:
-                            new_token.append(merged_bytes)
-                            i += 2
-                        else:
-                            new_token.append(token[i])
-                            i += 1
-                    new_token = tuple(new_token)
-                    new_token_dict[new_token] = count
-            token_dict = new_token_dict
+            update_token_set = pair_token_mapping[pair_with_max_counts]
+            for token in update_token_set:
+                count = token_dict[token]
+                new_token = []
+                i = 0
+                while i < len(token):
+                    if i < len(token) -1 and (token[i], token[i + 1]) == pair_with_max_counts:
+                        new_token.append(merged_bytes)
+                        i += 2
+                    else:
+                        new_token.append(token[i])
+                        i += 1
+                new_token = tuple(new_token)
+                del token_dict[token]
+                token_dict[new_token] = count
     
     return (vocab, merge_list)
