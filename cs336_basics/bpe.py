@@ -1,7 +1,8 @@
 import os
-import regex as re
 import copy
 import time
+import json
+import regex as re
 from typing import BinaryIO
 from concurrent.futures import ProcessPoolExecutor
 
@@ -174,6 +175,42 @@ def train_bpe(
     print(f'merging: {t3 - t2}')
     
     return (vocab, merge_list)
+
+class Tokenizer:
+
+    def __init__(
+        self,
+        vocab: dict[int, bytes],
+        merges: list[tuple[bytes, bytes]],
+        special_tokens: list[str] | None = None,
+    ):
+        self.vocab = vocab
+        self.merges = merges
+        self.special_tokens = special_tokens
+    
+    def from_files(
+        cls,
+        vocab_filepath: str,
+        merges_filepath: str,
+        special_tokens: list[str] | None = None,
+    ):
+        with open(vocab_filepath, encoding="utf-8") as f:
+            inv_vocab = json.load(f)
+            vocab = {id: token.encode(ENCODE) for token, id in inv_vocab.items()}
+
+        with open(merges_filepath, encoding="utf-8") as f:
+            merges = [tuple(line.rstrip().split(" ")) for line in f]
+            merges_bytes = [(token_1.encode(ENCODE), token_2.encode(ENCODE)) for token_1, token_2 in merges]
+        
+        return cls(vocab, merges_bytes, special_tokens)
+
+    def encode(
+        self,
+        text: str
+    ) -> list[int]:
+        
+        pass
+
 
 if __name__ == "__main__":
     # Problem (train_bpe_tinystories)
