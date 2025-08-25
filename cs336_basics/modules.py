@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from einops import einsum
+from einops import einsum, rearrange
 import math
 
 class Linear(nn.Module):
@@ -86,3 +86,35 @@ class SwiGLU(nn.Module):
         w1x = self.w1(x)
         silu_w1x = w1x / (1 + torch.exp(-w1x))
         return self.w2(silu_w1x * self.w3(x))
+
+class RotaryPositionalEmbedding(nn.Module):
+    def __init__(
+        self,
+        theta: float,
+        d_k: int,
+        max_seq_len: int,
+        device: torch.device | None = None,
+    ):
+        assert d_k % 2 == 0
+        super().__init__()
+        # (d_k / 2)
+        omega = 1.0 / (theta ** (torch.arange(0, d_k, 2, device=device) / d_k))
+        # (max_seq_len)
+        pos = torch.arange(max_seq_len, device=device)
+        angles = torch.outer(pos, omega).float()
+        rotations = torch.polar(torch.ones_like(angles, device = device), angles)
+        self.register_buffer("rotations", rotations, persistent=False)
+        self.d_k = d_k
+    
+    def forward(
+        self,
+        x: torch.Tensor,
+        token_positions: torch.Tensor
+    ) -> torch.Tensor:
+        assert x.shape[-1] == self.d_k
+        assert x.shape[-2] == token_positions.shape[-1]
+        in_dtype = x.dtype
+        x_complex = torch.view_as_complex(rearrange(x.float(), "... (d1 d2) -> ... d1 d2", d2 = 2))
+        rotations = self.rotations[token_positions]
+        x_rotated = rearrange(torch.view_as_real(rotations * x_complex), "... d1 d2-> ... (d1 d2)", d2 = 2)
+        return x_rotated.to(in_dtype)
