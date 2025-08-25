@@ -135,3 +135,23 @@ class Softmax(nn.Module):
         exp_x = torch.exp(x - max_x)
         return exp_x / torch.sum(exp_x, dim=dim, keepdim=True)
 
+class ScaledDotProductAttention(nn.Module):
+    def __init__(
+        self, 
+    ):
+        super().__init__()
+        self.softmax = Softmax()
+
+    def forward(
+        self,
+        Q: torch.Tensor, # " ... queries d_k"
+        K: torch.Tensor, # " ... keys d_k"
+        V: torch.Tensor, # " ... keys d_v"
+        mask: torch.Tensor | None = None, # " ... queries keys"
+    ) -> torch.Tensor:
+        assert Q.shape[-1] == K.shape[-1]
+        d_k = Q.shape[-1]
+        q_kt = einsum(Q, K, " ... queries d_k, ... keys d_k -> ... queries keys") / math.sqrt(d_k)
+        q_kt.masked_fill_(~mask, -torch.inf)
+        return einsum(self.softmax(q_kt, dim = -1), V, "... queries keys, ... keys d_v -> ... queries d_v")
+    
