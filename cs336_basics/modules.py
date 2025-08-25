@@ -118,3 +118,20 @@ class RotaryPositionalEmbedding(nn.Module):
         rotations = self.rotations[token_positions]
         x_rotated = rearrange(torch.view_as_real(rotations * x_complex), "... d1 d2-> ... (d1 d2)", d2 = 2)
         return x_rotated.to(in_dtype)
+
+class Softmax(nn.Module):
+    def __init__(
+            self,
+        ):
+        super().__init__()
+    
+    def forward(
+        self,
+        x: torch.Tensor,
+        dim: int,        
+    ) -> torch.Tensor:
+        assert dim < x.dim()
+        max_x, _ = torch.max(x, dim=dim, keepdim=True)
+        exp_x = torch.exp(x - max_x)
+        return exp_x / torch.sum(exp_x, dim=dim, keepdim=True)
+
