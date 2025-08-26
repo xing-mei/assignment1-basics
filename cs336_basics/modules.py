@@ -119,39 +119,67 @@ class RotaryPositionalEmbedding(nn.Module):
         x_rotated = rearrange(torch.view_as_real(rotations * x_complex), "... d1 d2-> ... (d1 d2)", d2 = 2)
         return x_rotated.to(in_dtype)
 
-class Softmax(nn.Module):
-    def __init__(
-            self,
-        ):
-        super().__init__()
-    
-    def forward(
-        self,
-        x: torch.Tensor,
-        dim: int,        
-    ) -> torch.Tensor:
-        assert dim < x.dim()
-        max_x, _ = torch.max(x, dim=dim, keepdim=True)
-        exp_x = torch.exp(x - max_x)
-        return exp_x / torch.sum(exp_x, dim=dim, keepdim=True)
+def softmax(
+    x: torch.Tensor,
+    dim: int,        
+) -> torch.Tensor:
+    in_dtype = x.dtype
+    max_x, _ = torch.max(x.float(), dim=dim, keepdim=True)
+    exp_x = torch.exp(x - max_x)
+    return (exp_x / torch.sum(exp_x, dim=dim, keepdim=True)).to(in_dtype)
 
-class ScaledDotProductAttention(nn.Module):
+def scaled_dot_product_attention(
+    Q: torch.Tensor, # " ... queries d_k"
+    K: torch.Tensor, # " ... keys d_k"
+    V: torch.Tensor, # " ... keys d_v"
+    mask: torch.Tensor | None = None, # " ... queries keys"
+) -> torch.Tensor:
+    assert Q.shape[-1] == K.shape[-1]
+    d_k = Q.shape[-1]
+    q_kt = einsum(Q, K, " ... queries d_k, ... keys d_k -> ... queries keys") / math.sqrt(d_k)
+    q_kt.masked_fill_(~mask, -torch.inf)
+    return einsum(softmax(q_kt, dim = -1), V, "... queries keys, ... keys d_v -> ... queries d_v")
+
+class MultiHeadSelfAttention(nn.Module):
     def __init__(
         self, 
+        d_model: int,
+        num_heads: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
+        assert d_model % num_heads == 0
         super().__init__()
-        self.softmax = Softmax()
-
+        self.num_heads = num_heads
+        self.d_model = d_model
+        self.d_head = int(d_model / num_heads)
+        self.qkv_proj = Linear(d_model, 3 * d_model, device, dtype)
+        self.o_proj = Linear(d_model, d_model, device, dtype)
+    
     def forward(
         self,
-        Q: torch.Tensor, # " ... queries d_k"
-        K: torch.Tensor, # " ... keys d_k"
-        V: torch.Tensor, # " ... keys d_v"
-        mask: torch.Tensor | None = None, # " ... queries keys"
+        x: torch.Tensor, # " ... sequence_length d_model"
+        rope: RotaryPositionalEmbedding | None = None,
+        token_positions: torch.Tensor | None = None,
+        causal: bool = True,
     ) -> torch.Tensor:
-        assert Q.shape[-1] == K.shape[-1]
-        d_k = Q.shape[-1]
-        q_kt = einsum(Q, K, " ... queries d_k, ... keys d_k -> ... queries keys") / math.sqrt(d_k)
-        q_kt.masked_fill_(~mask, -torch.inf)
-        return einsum(self.softmax(q_kt, dim = -1), V, "... queries keys, ... keys d_v -> ... queries d_v")
-    
+        assert x.shape[-1] == self.d_model
+        seq_len = x.shape[-2]
+        qkv = self.qkv_proj(x)
+        q, k, v = torch.split(qkv, self.d_model, dim=-1)
+        q = rearrange(q, "... seq_length (num_heads d_head) -> ... num_heads seq_length d_head", d_head = self.d_head)
+        k = rearrange(k, "... seq_length (num_heads d_head) -> ... num_heads seq_length d_head", d_head = self.d_head)
+        if rope:
+            if token_positions is None:
+                token_positions = torch.arange(seq_len, device=x.device)
+            q = rope(q, token_positions)
+            k = rope(k, token_positions)
+        v = rearrange(v, "... seq_length (num_heads d_head) -> ... num_heads seq_length d_head", d_head = self.d_head)
+
+        if causal:
+            mask = ~torch.triu(torch.ones((seq_len, seq_len), device=x.device, dtype=torch.bool), diagonal=1)
+        else:
+            mask = torch.ones((seq_len, seq_len), device=x.device, dtype=torch.bool)
+        out = scaled_dot_product_attention(q, k, v, mask)
+        out = rearrange(out, "... num_heads seq_length d_head -> ... seq_length (num_heads d_head)")
+        return self.o_proj(out)
