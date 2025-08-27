@@ -377,7 +377,30 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    transformer_lm = cs336_basics.modules.TransformerLM(
+        vocab_size, 
+        context_length, 
+        d_model, 
+        num_layers, 
+        num_heads, 
+        d_ff, 
+        rope_theta)
+    transformer_lm.token_embeddings.embedding_table.data = weights['token_embeddings.weight']
+    for l, layer in enumerate(transformer_lm.layers):
+        prefix = f'layers.{l}.'
+        layer.attn.qkv_proj.w.data = torch.cat(
+            [weights[prefix + 'attn.q_proj.weight'], 
+             weights[prefix + 'attn.k_proj.weight'], 
+             weights[prefix + 'attn.v_proj.weight']], dim=0)
+        layer.attn.o_proj.w.data = weights[prefix + 'attn.output_proj.weight']
+        layer.ffn.w1.w.data = weights[prefix + 'ffn.w1.weight']
+        layer.ffn.w2.w.data = weights[prefix + 'ffn.w2.weight']
+        layer.ffn.w3.w.data = weights[prefix + 'ffn.w3.weight']
+        layer.ln1.gain.data = weights[prefix + 'ln1.weight']
+        layer.ln2.gain.data = weights[prefix + 'ln2.weight']
+    transformer_lm.ln_final.gain.data = weights['ln_final.weight']
+    transformer_lm.lm_head.w.data = weights['lm_head.weight']
+    return transformer_lm(in_indices)
 
 
 def run_rmsnorm(
