@@ -73,11 +73,13 @@ class SwiGLU(nn.Module):
         self, 
         d_model: int,
         d_ff: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
-        self.w1 = Linear(d_model, d_ff)
-        self.w2 = Linear(d_ff, d_model)
-        self.w3 = Linear(d_model, d_ff)
+        self.w1 = Linear(d_model, d_ff, device, dtype)
+        self.w2 = Linear(d_ff, d_model, device, dtype)
+        self.w3 = Linear(d_model, d_ff, device, dtype)
     
     def forward(
         self,
@@ -183,3 +185,29 @@ class MultiHeadSelfAttention(nn.Module):
         out = scaled_dot_product_attention(q, k, v, mask)
         out = rearrange(out, "... num_heads seq_length d_head -> ... seq_length (num_heads d_head)")
         return self.o_proj(out)
+
+class TransformerBlock(nn.Module):
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        d_ff: int,
+        max_seq_len: int,
+        theta: float,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ):
+        super().__init__()
+        self.d_head = int(d_model / num_heads)
+        self.ln1 = RMSNorm(d_model = d_model, device = device, dtype = dtype)
+        self.attn = MultiHeadSelfAttention(d_model, num_heads, device, dtype)
+        self.ln2 = RMSNorm(d_model = d_model, device = device, dtype = dtype)
+        self.ffn = SwiGLU(d_model, d_ff, device, dtype)
+        self.rope = RotaryPositionalEmbedding(theta, self.d_head, max_seq_len, device)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+    ) -> torch.Tensor:
+        x = x + self.attn(self.ln1(x), self.rope)
+        return x + self.ffn(self.ln2(x))
