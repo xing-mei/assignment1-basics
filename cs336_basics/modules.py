@@ -241,3 +241,14 @@ class TransformerLM(nn.Module):
         for layer in self.layers:
             x = layer(x)
         return self.lm_head(self.ln_final(x))
+
+def cross_entropy(
+    inputs: torch.Tensor, # " batch_size, vocab_size",
+    targets: torch.Tensor, # " batch_size"
+) -> torch.Tensor:
+    assert inputs.shape[-2] == targets.shape[-1]
+    inputs_max, _= torch.max(inputs, dim=-1, keepdim=True)
+    inputs_adjusted = inputs - inputs_max
+    log_denom = torch.log(torch.sum(torch.exp(inputs_adjusted), dim=-1))
+    log_numerator = torch.gather(inputs_adjusted, dim=-1, index=targets.unsqueeze(1)).squeeze()
+    return torch.mean(log_denom - log_numerator, dim=0)
