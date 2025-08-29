@@ -11,6 +11,7 @@ from torch import Tensor
 
 import cs336_basics.bpe
 import cs336_basics.modules
+import cs336_basics.optimizer
 
 def run_linear(
     d_in: int,
@@ -515,7 +516,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return cs336_basics.optimizer.AdamW
 
 
 def run_get_lr_cosine_schedule(
