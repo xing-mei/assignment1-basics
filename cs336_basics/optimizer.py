@@ -1,8 +1,21 @@
 from typing import Optional
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Iterable
 import torch
 from torch import nn
 import math
+
+def gradient_clipping(
+    parameters: Iterable[nn.Parameter],
+    max_l2_norm: float,
+):
+    assert max_l2_norm > 0
+    grads = [param.grad for param in parameters if param.grad is not None]
+    grads_norm = torch.stack([grad.norm() for grad in grads])
+    total_l2_norm = grads_norm.norm()
+    if total_l2_norm > max_l2_norm:
+        scale = max_l2_norm / (total_l2_norm + 1e-6)
+        for grad in grads:
+            grad *= scale
 
 def lr_cosine_schedule(
     t: int,
