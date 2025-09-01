@@ -68,6 +68,11 @@ class RMSNorm(nn.Module):
         output = x * self.gain / rms
         return output.to(in_dtype)
 
+def SiLU(
+    x: torch.Tensor,
+) -> torch.Tensor:
+    return x / (1. + torch.exp(-x))
+
 class SwiGLU(nn.Module):
     def __init__(
         self, 
